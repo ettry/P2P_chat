@@ -1,0 +1,13 @@
+[package]
+name = "paswd"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.21.0"
+aes = "0.7.5"
+block-modes = "0.8.0"
+chrono = "0.4.41"
+num-bigint = "0.4"
+num-traits = "0.2"
+sha2 = "0.10"
