@@ -35,7 +35,7 @@ fn main() {
     let vi = general_purpose::STANDARD.encode(iv);
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    if input.starts_with("he:") {
+    if input.starts_with("他：") {
         let encrypted = aes_encrypt(&input, &key, &iv);
         let mut record = Vec::new();
         let encoded = general_purpose::STANDARD.encode(&encrypted);
@@ -47,7 +47,9 @@ fn main() {
             bytes.extend(&code.to_be_bytes());
         }
         let base64 = general_purpose::STANDARD.encode(&bytes);
-        if args.len() >= 2 {
+        if args.len() >= 2 && args[1].len() > 128 {
+            println!("{base64}:::::::::{vi}{}", &args[1][0..128]);
+        } else if args.len() > 2 {
             println!("{base64}:::::::::{vi}{}", args[1]);
         } else {
             println!("{base64}:::::::::{vi}");
@@ -73,7 +75,13 @@ fn main() {
         // );
         match aes_decrypt(&encrypted, &key, &iv) {
             Ok(decrypted) => {
-                if args.len() >= 2 {
+                if args.len() >= 2 && args[1].len() > 128 {
+                    println!(
+                        "{}:::::::::{vi}{}",
+                        String::from_utf8_lossy(&decrypted).trim_end(),
+                        &args[1][0..128]
+                    );
+                } else if args.len() > 2 {
                     println!(
                         "{}:::::::::{vi}{}",
                         String::from_utf8_lossy(&decrypted).trim_end(),

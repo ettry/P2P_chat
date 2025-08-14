@@ -38,7 +38,7 @@ async fn process_with_filter(input: String, iiiii: String) -> String {
         use tokio::io::AsyncWriteExt;
         stdin.write_all(input_owned.as_bytes()).await.unwrap();
     });
-    let output = child.wait_with_output().await.expect("sys:处理失败");
+    let output = child.wait_with_output().await.expect("系统：处理失败");
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
@@ -100,7 +100,7 @@ impl P2pliaotian {
         let (tx, rx) = mpsc::unbounded_channel();
         let (msg_tx, msg_rx) = mpsc::channel::<String>(32);
         Self {
-            myhostport: "".to_string(),
+            myhostport: "0".to_string(),
             hehostip: "".to_string(),
             hehostport: "".to_string(),
             myhostip: "".to_string(),
@@ -218,19 +218,19 @@ impl eframe::App for P2pliaotian {
                 let listener = match TcpListener::bind(&local_addr).await {
                     Ok(l) => l,
                     Err(e) => {
-                        let _ = log_tx.send(format!("sys:监听本地地址失败${e}$"));
+                        let _ = log_tx.send(format!("系统： 监听本地地址失败${e}$"));
                         return;
                     }
                 };
                 let conn = tokio::select! {
                     biased;
                     Ok((stream,_addr)) = listener.accept() => {
-                        let _ = log_tx.send(format!("sys:连接来自[{peer_addr}]"));
+                        let _ = log_tx.send(format!("系统： 连接来自[{peer_addr}]"));
                         let _ = log_tx.send((",cmnvkjhfkjhadklfjhikujhakldfjhaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").to_owned());
                         stream
                     }
                     Ok(stream) = TcpStream::connect(&peer_addr) => {
-                        let _ = log_tx.send(format!("sys:连接到对方[{peer_addr}]"));
+                        let _ = log_tx.send(format!("系统： 连接到对方[{peer_addr}]"));
                         let _ = log_tx.send((",cmnvkjhfkjhadklfjhikujhakldfjhaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").to_owned());
                         stream
                     }
@@ -248,7 +248,7 @@ impl eframe::App for P2pliaotian {
                     loop {
                         match reader.read(&mut buf).await {
                             Ok(0) => {
-                                let _ = log_tx_clone.send("sys:连接已关闭".to_string());
+                                let _ = log_tx_clone.send("系统： 连接已关闭".to_string());
                                 break;
                             }
                             Ok(n) => {
@@ -274,7 +274,7 @@ impl eframe::App for P2pliaotian {
                                 }
                             }
                             Err(e) => {
-                                let _ = log_tx_clone.send(format!("sys:接收出错${e:?}$"));
+                                let _ = log_tx_clone.send(format!("系统： 接收出错${e:?}$"));
                                 break;
                             }
                         }
@@ -331,7 +331,7 @@ impl eframe::App for P2pliaotian {
                     == ",cmnvkjhfkjhadklfjhikujhakldfjhaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
                 {
                     self.not_lj = true;
-                    self.log.push(format!("sys:密码为{}", self.mima));
+                    self.log.push(format!("系统： 密码为{}", self.mima));
                 } else {
                     self.log.push(status.trim().to_owned());
                     // self.log.push(format!("he: {}", status.trim()));
@@ -353,7 +353,7 @@ impl eframe::App for P2pliaotian {
                     //     process_with_filter(self.hemiyao.clone(), "optime".to_string())
                 });
                 if ui.button("解析连接密钥").clicked() {
-                    self.log.push("sys:等待对方连接".to_owned());
+                    self.log.push("系统：等待对方连接".to_owned());
                     let hemiyao = self.hemiyao.clone();
                     self.hemiyao_future =
                         Some(Box::pin(process_with_filter(hemiyao, "optime".to_string())));
@@ -370,7 +370,7 @@ impl eframe::App for P2pliaotian {
                         ui.text_edit_singleline(&mut self.mima);
                     });
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("本机端口0为随机端口").color(Color32::GREEN));
+                        ui.label(RichText::new("本机端口,0为随机端口").color(Color32::GREEN));
                         ui.text_edit_singleline(&mut self.myhostport);
                         ui.label(RichText::new("本地对外ipv6").color(Color32::GREEN));
                         ui.text_edit_singleline(&mut self.myhostip);
@@ -396,7 +396,7 @@ impl eframe::App for P2pliaotian {
                                 let random_port = rand::thread_rng().gen_range(1024..=65535);
                                 self.myhostport = random_port.to_string();
                             }
-                            self.liannjie = "he:".to_string()
+                            self.liannjie = "他： ".to_string()
                                 + "&&"
                                 + self.myhostip.trim()
                                 + "&&"
@@ -407,7 +407,7 @@ impl eframe::App for P2pliaotian {
                                 self.liannjie.clone(),
                                 "optime".to_string(),
                             )));
-                            self.log.push("sys:连接密钥生成中...".to_owned());
+                            self.log.push("系统： 连接密钥生成中...".to_owned());
                         } else {
                             self.input_error = true;
                         }
@@ -425,10 +425,10 @@ impl eframe::App for P2pliaotian {
 
                 match fut.as_mut().poll(&mut cx) {
                     Poll::Ready(result) => {
-                        self.log.push("sys:连接密钥生成成功".to_owned());
+                        self.log.push("系统： 连接密钥生成成功".to_owned());
                         let tteemm = result.trim().split(":::::::::").next();
                         self.log
-                            .push(tteemm.unwrap_or("sys:密钥生成失败").to_string());
+                            .push(tteemm.unwrap_or("系统： 密钥生成失败").to_string());
                         self.ui_input_right = true;
                         self.input_error = false;
                     }
@@ -457,12 +457,12 @@ impl eframe::App for P2pliaotian {
                             self.hehostport = parts[2].clone();
                             self.hemima = parts[3].clone();
                             if self.hemima != self.mima {
-                                self.log.push("sys:对端密码不匹配".to_owned());
+                                self.log.push("系统： 对端密码不匹配".to_owned());
                             } else if self.ui_input_right {
                                 self.start = true;
                             }
                         } else {
-                            self.log.push("sys:非法密钥".to_owned());
+                            self.log.push("系统： 非法密钥".to_owned());
                         }
                     }
                     std::task::Poll::Pending => {
@@ -507,16 +507,16 @@ impl eframe::App for P2pliaotian {
                             && ui.input(|i| i.key_pressed(egui::Key::Enter))
                             && !self.input.is_empty()
                     {
-                        if !self.input.starts_with("sys:") {
-                            self.log.push(format!("you:  {}", self.input.trim()));
-                            self.input.insert_str(0, "he:  ");
+                        if !self.input.starts_with("系统： ") {
+                            self.log.push(format!("你： {}", self.input.trim()));
+                            self.input.insert_str(0, "他： ");
                             if let Some(msg_tx) = &self.msg_tx {
                                 let msg = self.input.clone();
                                 let _ = msg_tx.try_send(msg);
                                 // self.log.push(self.input.trim().to_owned());
                             }
                         } else {
-                            self.log.push("sys:对...对吗？".to_owned());
+                            self.log.push("系统： 对...对吗？".to_owned());
                         }
                         self.input.clear();
                     }

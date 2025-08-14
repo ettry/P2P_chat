@@ -21,7 +21,6 @@
 ### 2. 加密核心（可替换为 Python 示例）
 
 本软件依赖于加密程序（默认为 Rust 版 `jiamiapp`），你也可以使用 Python 版本。Python 版示例代码如下：
-python版本需要修改软件使用python来启动文件或直接编译python文件为可执行文件  
 ```python
 import sys
 import base64
@@ -44,7 +43,7 @@ if __name__ == "__main__":
     input_text = sys.stdin.read().strip()
     key, iv = get_key_iv(mima)
     vi = base64.b64encode(iv).decode()
-    if input_text.startswith("he:"):
+    if input_text.startswith("他："):
         cipher = AES.new(key, AES.MODE_CBC, iv)
         encrypted = cipher.encrypt(pad(input_text.encode(), AES.block_size))
         encoded = base64.b64encode(encrypted).decode()
@@ -61,8 +60,22 @@ if __name__ == "__main__":
 
 > 依赖：`pip install pycryptodome`
 
-- 启动方式：  
-  `python jiamiapp.py 密码`
+- 使用方式：  
+```rust
+    let exe_path = exe_dir.join("jiamiapp.exe");
+    let mut child = Command::new(exe_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .arg(iiiii)
+  更改为
+    let exe_path = exe_dir.join("jiamiapp.py"); //更改文件后缀
+    let mut child = Command::new(python)        //使用python软件
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .arg(exe_path)                          //使用参数方法打开.py文件
+        .arg(iiiii)
+```
+  或直接将python打包为exe文件使用
 - 标准输入接受明文，输出加密或解密结果
 - 以 `he:` 开头判断加密/解密，输出格式为：密文（或明文）`:::::::::`下次密钥（base64+密码）
 
@@ -78,6 +91,7 @@ if __name__ == "__main__":
 - 消息发送前自动加密，接收后自动解密。
 - 密钥和iv由密码和当天0点时间戳SHA256计算获得，保证每日更换。
 - 消息体携带密钥，自动同步双方密码。
+- 建立连接后每次通信自动更换密钥保证安全性。
 
 ### 5. UI界面
 
