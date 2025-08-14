@@ -1,0 +1,553 @@
+use eframe::egui;
+use egui::{Color32, RichText};
+use rand::Rng;
+use std::env;
+use std::future::Future;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::process::Command;
+use tokio::sync::Mutex;
+use tokio::sync::mpsc;
+
+async fn process_with_filter(input: String, iiiii: String) -> String {
+    let exe_dir: PathBuf = env::current_dir().expect("无法获取当前目录");
+    let exe_path = exe_dir.join("jiamiapp.exe");
+    let mut child = Command::new(exe_path)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .arg(iiiii)
+        .current_dir(exe_dir)
+        .spawn()
+        .expect("启动处理程序失败");
+    // let mut child = Command::new("jiamiapp")
+    //     .stdin(std::process::Stdio::piped())
+    //     .stdout(std::process::Stdio::piped())
+    //     .arg(iiiii)
+    //     .current_dir(exe_dir) // 设置当前工作目录为可执行文件所在目录
+    //     .spawn()
+    //     .expect("启动处理程序失败");
+
+    let mut stdin = child.stdin.take().unwrap();
+
+    let input_owned = input.to_owned();
+    tokio::spawn(async move {
+        use tokio::io::AsyncWriteExt;
+        stdin.write_all(input_owned.as_bytes()).await.unwrap();
+    });
+    let output = child.wait_with_output().await.expect("系统：处理失败");
+    String::from_utf8_lossy(&output.stdout).to_string()
+}
+
+fn main() -> eframe::Result<()> {
+    // let options = eframe::NativeOptions {
+    //     viewport: egui::ViewportBuilder::default().with_inner_size([896.0, 580.0]),
+    //     ..Default::default()
+    // };
+    // eframe::run_native(
+    //     "开始",
+    //     options,
+    //     Box::new(|cc| {
+    //         setup_custom_fonts(&cc.egui_ctx);
+    //         Ok(Box::new(p2pliaotian::new()))
+    //     }),
+    // )
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(async {
+        let options = eframe::NativeOptions {
+            viewport: egui::ViewportBuilder::default().with_inner_size([896.0, 580.0]),
+            ..Default::default()
+        };
+        eframe::run_native(
+            "开始",
+            options,
+            Box::new(|cc| {
+                setup_custom_fonts(&cc.egui_ctx);
+                Ok(Box::new(P2pliaotian::new()))
+            }),
+        )
+    })
+}
+
+struct P2pliaotian {
+    myhostport: String,
+    myhostip: String,
+    hehostip: String,
+    hehostport: String,
+    hemima: String, // 对端密码
+    start: bool,
+    input_error: bool,
+    conn_rx: Option<mpsc::UnboundedReceiver<String>>,
+    log: Vec<String>,
+    input: String,
+    ui_input_right: bool,
+    msg_tx: Option<mpsc::Sender<String>>,          // 消息发送端
+    msg_rx: Option<mpsc::Receiver<String>>,        // 消息接收端
+    log_tx: Option<mpsc::UnboundedSender<String>>, // 连接状态发送端
+    mima: String,                                  // 密码
+    lianjie_future: Option<Pin<Box<dyn Future<Output = String> + Send>>>,
+    hemiyao_future: Option<Pin<Box<dyn Future<Output = String> + Send>>>,
+    liannjie: String, // 连接密钥/
+    not_lj: bool,     // 是否连接
+    hemiyao: String,  // 对端密钥
+}
+
+impl P2pliaotian {
+    fn new() -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let (msg_tx, msg_rx) = mpsc::channel::<String>(32);
+        Self {
+            myhostport: "0".to_string(),
+            hehostip: "".to_string(),
+            hehostport: "".to_string(),
+            myhostip: "".to_string(),
+            start: false,
+            input_error: false,
+            conn_rx: Some(rx),
+            log_tx: Some(tx), // 连接状态发送端
+            log: Vec::new(),
+            input: "".to_string(),
+            msg_tx: Some(msg_tx), // 消息发送端
+            msg_rx: Some(msg_rx), // 消息接收端
+            ui_input_right: false,
+            mima: "默认".to_string(), // 密码
+            lianjie_future: None,     // 用于存储连接的 Future
+            hemiyao_future: None,     // 用于存储对端密钥的 Future
+            liannjie: "".to_string(), // 连接密钥
+            not_lj: false,            // 是否连接
+            hemima: "".to_string(),   // 对端密码
+            hemiyao: "".to_string(),  // 对端密钥
+        }
+    }
+}
+
+impl eframe::App for P2pliaotian {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.set_visuals(egui::Visuals::dark());
+
+        //异步处理
+        if self.start
+            && let Some(log_tx) = self.log_tx.clone()
+        {
+            let local_addr = format!("[::1]:{}", self.myhostport);
+            let peer_addr = format!("{}:{}", self.hehostip, self.hehostport);
+            let ui_msg_rx = self.msg_rx.take();
+            // let mima = self.mima.clone();
+            // tokio::spawn(async move {
+            //     // let listener = TcpListener::bind(&local_addr).await.expect("监听地址失败");
+            //     let listener = match TcpListener::bind(&local_addr).await {
+            //         Ok(l) => l,
+            //         Err(e) => {
+            //             let _ = log_tx.send(format!("sys:监听本地地址失败${e}$"));
+            //             return; // 任务提前结束
+            //         }
+            //     };
+            //     // 2. 启动连接对方
+            //     let conn = tokio::select! {
+            //         // 谁先建立就用谁
+            //         biased;
+            //
+            //         Ok((stream,_addr)) = listener.accept() => {
+            //             // println!("收到来自 {addr} 的连接");
+            //             let _ = log_tx.send(format!("sys:连接来自[{peer_addr}]"));
+            //             let _ = log_tx.send((",cmnvkjhfkjhadklfjhikujhakldfjhaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").to_owned());
+            //             stream
+            //         }
+            //         Ok(stream) = TcpStream::connect(&peer_addr) => {
+            //             // println!("主动连接到对方 {peer_addr}");
+            //             let _ = log_tx.send(format!("sys:连接到对方[{peer_addr}]"));
+            //             let _ = log_tx.send((",cmnvkjhfkjhadklfjhikujhakldfjhaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").to_owned());
+            //             stream
+            //         }
+            //     };
+            //
+            //     let (reader, writer) = conn.into_split();
+            //     let mut reader = BufReader::new(reader);
+            //     let mut writer = BufWriter::new(writer);
+            //
+            //     // 读取任务 - 用于接收对端消息
+            //     let log_tx_clone = log_tx.clone();
+            //     let mima_clone = mima.clone();
+            //     tokio::spawn(async move {
+            //         let mut buf = [0u8; 10240];
+            //         loop {
+            //             match reader.read(&mut buf).await {
+            //                 Ok(0) => {
+            //                     let _ = log_tx_clone.send("sys:连接已关闭".to_string());
+            //                     break;
+            //                 }
+            //                 Ok(n) => {
+            //                     let recv_str = String::from_utf8_lossy(&buf[..n]);
+            //                     let processed_recv = process_with_filter(
+            //                         recv_str.to_string(),
+            //                         mima_clone.to_string(),
+            //                     )
+            //                     .await;
+            //                     let _ = log_tx_clone.send(processed_recv);
+            //                 }
+            //                 Err(e) => {
+            //                     let _ = log_tx_clone.send(format!("sys:接收出错${e:?}$"));
+            //                     break;
+            //                 }
+            //             }
+            //         }
+            //     });
+            //
+            //     // 发送任务 - 监听来自 UI 的消息
+            //     if let Some(mut msg_rx) = ui_msg_rx {
+            //         let mima_clone_2 = mima.clone();
+            //         tokio::spawn(async move {
+            //             while let Some(msg) = msg_rx.recv().await {
+            //                 let processed_msg =
+            //                     process_with_filter(msg.to_string(), mima_clone_2.to_string())
+            //                         .await;
+            //                 if let Err(e) = writer.write_all(processed_msg.as_bytes()).await {
+            //                     println!("发送出错${e:?}$");
+            //                     break;
+            //                 }
+            //                 writer.flush().await.unwrap();
+            //             }
+            //         });
+            //     }
+            // });
+            let mima = Arc::new(Mutex::new(self.mima.clone())); // 用Arc<Mutex<String>>包装密码
+            tokio::spawn(async move {
+                let listener = match TcpListener::bind(&local_addr).await {
+                    Ok(l) => l,
+                    Err(e) => {
+                        let _ = log_tx.send(format!("系统： 监听本地地址失败${e}$"));
+                        return;
+                    }
+                };
+                let conn = tokio::select! {
+                    biased;
+                    Ok((stream,_addr)) = listener.accept() => {
+                        let _ = log_tx.send(format!("系统： 连接来自[{peer_addr}]"));
+                        let _ = log_tx.send((",cmnvkjhfkjhadklfjhikujhakldfjhaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").to_owned());
+                        stream
+                    }
+                    Ok(stream) = TcpStream::connect(&peer_addr) => {
+                        let _ = log_tx.send(format!("系统： 连接到对方[{peer_addr}]"));
+                        let _ = log_tx.send((",cmnvkjhfkjhadklfjhikujhakldfjhaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa").to_owned());
+                        stream
+                    }
+                };
+
+                let (reader, writer) = conn.into_split();
+                let mut reader = BufReader::new(reader);
+                let mut writer = BufWriter::new(writer);
+
+                // 读取任务
+                let log_tx_clone = log_tx.clone();
+                let mima_clone = mima.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 10240];
+                    loop {
+                        match reader.read(&mut buf).await {
+                            Ok(0) => {
+                                let _ = log_tx_clone.send("系统： 连接已关闭".to_string());
+                                break;
+                            }
+                            Ok(n) => {
+                                let recv_str = String::from_utf8_lossy(&buf[..n]);
+                                // 处理并更新密码
+                                let current_mima = {
+                                    let m = mima_clone.lock().await;
+                                    m.to_string()
+                                };
+                                let processed_recv =
+                                    process_with_filter(recv_str.to_string(), current_mima).await;
+                                // 分割并更新密码
+                                let parts: Vec<&str> =
+                                    processed_recv.trim_end().split(":::::::::").collect();
+                                if parts.len() >= 2 {
+                                    // 第一位是消息，第二位是新的密码
+                                    let _ = log_tx_clone.send(parts[0].to_string());
+                                    let mut m = mima_clone.lock().await;
+                                    *m = parts[1].to_string();
+                                } else {
+                                    // 没有新密码就只发送消息
+                                    let _ = log_tx_clone.send(processed_recv);
+                                }
+                            }
+                            Err(e) => {
+                                let _ = log_tx_clone.send(format!("系统： 接收出错${e:?}$"));
+                                break;
+                            }
+                        }
+                    }
+                });
+
+                // 发送任务
+                if let Some(mut msg_rx) = ui_msg_rx {
+                    let mima_clone2 = mima.clone();
+                    tokio::spawn(async move {
+                        while let Some(msg) = msg_rx.recv().await {
+                            let current_mima = {
+                                let m = mima_clone2.lock().await;
+                                m.to_string()
+                            };
+                            // let msg: String = msg.insert_str(0, "he:");
+                            let processed_msg =
+                                process_with_filter(msg.to_string(), current_mima).await;
+                            let parts: Vec<&str> =
+                                processed_msg.trim_end().split(":::::::::").collect();
+                            if parts.len() >= 2 {
+                                let qq = parts[0];
+                                let ee = parts[1];
+                                // 更新mima为ee
+                                {
+                                    let mut m = mima_clone2.lock().await;
+                                    *m = ee.to_string();
+                                }
+                                // 只发送第一部分
+                                if let Err(e) = writer.write_all(qq.as_bytes()).await {
+                                    println!("发送出错${e:?}$");
+                                    break;
+                                }
+                                writer.flush().await.unwrap();
+                            } else {
+                                // 如果没有新密码，只发送原文
+                                if let Err(e) = writer.write_all(processed_msg.as_bytes()).await {
+                                    println!("发送出错${e:?}$");
+                                    break;
+                                }
+                                writer.flush().await.unwrap();
+                            }
+                        }
+                    });
+                }
+            });
+            self.start = false; // 重置状态
+        }
+
+        //逻辑部分
+        if let Some(rx) = &mut self.conn_rx {
+            while let Ok(status) = rx.try_recv() {
+                if status
+                    == ",cmnvkjhfkjhadklfjhikujhakldfjhaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                {
+                    self.not_lj = true;
+                    self.log.push(format!("系统： 密码为{}", self.mima));
+                } else {
+                    self.log.push(status.trim().to_owned());
+                    // self.log.push(format!("he: {}", status.trim()));
+                    // self.log.push("he: ".to_string() + status.trim().to_owned());
+                }
+            }
+        }
+
+        //ui
+        egui::CentralPanel::default().show(ctx, |ui| {
+            if self.input_error {
+                ui.label(RichText::new("请填写完整的连接信息").color(Color32::RED));
+            }
+            if !self.not_lj {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("对端连接密钥").color(Color32::GREEN));
+                    ui.text_edit_singleline(&mut self.hemiyao);
+                    // (self.hehostip, self.hehostport, self.hemima) =
+                    //     process_with_filter(self.hemiyao.clone(), "optime".to_string())
+                });
+                if ui.button("解析连接密钥").clicked() {
+                    self.log.push("系统：等待对方连接".to_owned());
+                    let hemiyao = self.hemiyao.clone();
+                    self.hemiyao_future =
+                        Some(Box::pin(process_with_filter(hemiyao, "optime".to_string())));
+                }
+                if !self.ui_input_right {
+                    // ui.horizontal(|ui| {
+                    //     ui.label(RichText::new("对端地址").color(Color32::GREEN));
+                    //     ui.text_edit_singleline(&mut self.hehostip);
+                    //     ui.label(RichText::new("对端端口").color(Color32::GREEN));
+                    //     ui.text_edit_singleline(&mut self.hehostport);
+                    // });
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("密码默认为默认").color(Color32::GREEN));
+                        ui.text_edit_singleline(&mut self.mima);
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("本机端口,0为随机端口").color(Color32::GREEN));
+                        ui.text_edit_singleline(&mut self.myhostport);
+                        ui.label(RichText::new("本地对外ipv6").color(Color32::GREEN));
+                        ui.text_edit_singleline(&mut self.myhostip);
+                        // if ui.button("开始连接").clicked() {
+                        //     if !self.myhostport.is_empty()
+                        //         && !self.hehostip.is_empty()
+                        //         && !self.hehostport.is_empty()
+                        //     {
+                        //         self.start = true;
+                        //         self.input_error = false;
+                        //     } else {
+                        //         self.input_error = true;
+                        //     }
+                        // }
+                    });
+                    if ui.button("生成连接密钥").clicked() {
+                        if !self.myhostport.is_empty()
+                            && !self.mima.is_empty()
+                            && !self.myhostip.is_empty()
+                        {
+                            if self.myhostport == "0" {
+                                // 生成随机端口
+                                let random_port = rand::thread_rng().gen_range(1024..=65535);
+                                self.myhostport = random_port.to_string();
+                            }
+                            self.liannjie = "他： ".to_string()
+                                + "&&"
+                                + self.myhostip.trim()
+                                + "&&"
+                                + self.myhostport.trim()
+                                + "&&"
+                                + self.mima.trim();
+                            self.lianjie_future = Some(Box::pin(process_with_filter(
+                                self.liannjie.clone(),
+                                "optime".to_string(),
+                            )));
+                            self.log.push("系统： 连接密钥生成中...".to_owned());
+                        } else {
+                            self.input_error = true;
+                        }
+                    }
+                } else if ui.button("重新生成密钥").clicked() {
+                    self.ui_input_right = false;
+                }
+            }
+            ///////////////////////////////////////////////////////////////////////////////////////同步轮询密钥生成与解密
+            if let Some(mut fut) = self.lianjie_future.take() {
+                // 创建一个假的 waker
+                use futures::task::noop_waker_ref;
+                let waker = noop_waker_ref();
+                let mut cx = Context::from_waker(waker);
+
+                match fut.as_mut().poll(&mut cx) {
+                    Poll::Ready(result) => {
+                        self.log.push("系统： 连接密钥生成成功".to_owned());
+                        let tteemm = result.trim().split(":::::::::").next();
+                        self.log
+                            .push(tteemm.unwrap_or("系统： 密钥生成失败").to_string());
+                        self.ui_input_right = true;
+                        self.input_error = false;
+                    }
+                    Poll::Pending => {
+                        // 还没有完成，下帧再处理
+                        self.lianjie_future = Some(fut);
+                    }
+                }
+            }
+
+            if let Some(mut fut) = self.hemiyao_future.take() {
+                use futures::task::noop_waker_ref;
+                use std::task::Context;
+
+                let waker = noop_waker_ref();
+                let mut cx = Context::from_waker(waker);
+
+                match fut.as_mut().poll(&mut cx) {
+                    std::task::Poll::Ready(result) => {
+                        // 解析结果
+                        let result = result.trim().split(":::::::::").next().unwrap_or("");
+                        let parts: Vec<String> =
+                            result.split("&&").map(|s| s.to_string()).collect();
+                        if parts.len() == 4 {
+                            self.hehostip = parts[1].clone();
+                            self.hehostport = parts[2].clone();
+                            self.hemima = parts[3].clone();
+                            if self.hemima != self.mima {
+                                self.log.push("系统： 对端密码不匹配".to_owned());
+                            } else if self.ui_input_right {
+                                self.start = true;
+                            }
+                        } else {
+                            self.log.push("系统： 非法密钥".to_owned());
+                        }
+                    }
+                    std::task::Poll::Pending => {
+                        self.hemiyao_future = Some(fut);
+                    }
+                }
+            }
+            ///////////////////////////////////////////////////////////历史记录
+            egui::ScrollArea::vertical()
+                .max_height(300.0)
+                .show(ui, |ui| {
+                    for line in &self.log {
+                        ui.label(line);
+                    }
+                });
+            /////////////////////////////////////////////////////////////发送任务
+            // 输入区和发送按钮
+            if self.ui_input_right {
+                ui.horizontal(|ui| {
+                    let available_width = ui.available_width() - 80.0;
+
+                    // 计算文本实际需要的高度
+                    let font_size = ui
+                        .style()
+                        .text_styles
+                        .get(&egui::TextStyle::Body)
+                        .map(|font| font.size)
+                        .unwrap_or(14.0);
+
+                    let line_count = self.input.lines().count().max(1);
+                    let text_height = (line_count as f32) * (font_size + 4.0); // 每行增加4像素间距
+                    let min_height = 25.0;
+                    let max_height = 150.0;
+                    let final_height = text_height.clamp(min_height, max_height);
+
+                    let response = ui.add_sized(
+                        [available_width, final_height],
+                        egui::TextEdit::multiline(&mut self.input).desired_width(available_width),
+                    );
+                    if ui.button("发送").clicked() && !self.input.trim().is_empty()
+                        || response.lost_focus()
+                            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                            && !self.input.is_empty()
+                    {
+                        if !self.input.starts_with("系统： ") {
+                            self.log.push(format!("你： {}", self.input.trim()));
+                            self.input.insert_str(0, "他： ");
+                            if let Some(msg_tx) = &self.msg_tx {
+                                let msg = self.input.clone();
+                                let _ = msg_tx.try_send(msg);
+                                // self.log.push(self.input.trim().to_owned());
+                            }
+                        } else {
+                            self.log.push("系统： 对...对吗？".to_owned());
+                        }
+                        self.input.clear();
+                    }
+                });
+            }
+        });
+    }
+}
+
+fn setup_custom_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "my_font".to_owned(),
+        egui::FontData::from_static(include_bytes!("../src/noto.ttf")).into(),
+    );
+
+    // Put my font first (highest priority) for proportional text:
+    fonts
+        .families
+        .entry(egui::FontFamily::Proportional)
+        .or_default()
+        //.insert(0, "my_font".to_owned());
+        .push("my_font".to_owned());
+
+    // Put my font as last fallback for monospace:
+    fonts
+        .families
+        .entry(egui::FontFamily::Monospace)
+        .or_default()
+        .push("my_font".to_owned());
+
+    // Tell egui to use these fonts:
+    ctx.set_fonts(fonts);
+}
